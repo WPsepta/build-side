@@ -100,9 +100,20 @@
       render();
     }
 
+    function addWater() { addTileRandom('water'); }
+    function addGrass() { addTileRandom('grass'); }
+    function addDirt() { addTileRandom('dirt'); }
+    function addStone() { addTileRandom('stone'); }
+
     window.addTileRandom = addTileRandom;
+    window.addWater = addWater;
+    window.addGrass = addGrass;
+    window.addDirt = addDirt;
+    window.addStone = addStone;
     window.selectTool = selectTool;
 
+    // Force first draw after layout
+    setTimeout(render, 50);
     render();
   </script>
 </body>

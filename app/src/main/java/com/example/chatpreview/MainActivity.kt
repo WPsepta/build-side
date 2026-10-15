@@ -99,14 +99,12 @@ fun ChatPreviewApp() {
 
     fun processPending(wv: android.webkit.WebView) {
         GameController.processNew { cmd ->
-            val jsType = when (cmd.type) {
-                "water" -> "water"
-                "grass" -> "grass"
-                "dirt" -> "dirt"
-                "stone" -> "stone"
-                else -> null
+            when (cmd.type) {
+                "water" -> wv.evaluateJavascript("addWater()", null)
+                "grass" -> wv.evaluateJavascript("addGrass()", null)
+                "dirt" -> wv.evaluateJavascript("addDirt()", null)
+                "stone" -> wv.evaluateJavascript("addStone()", null)
             }
-            jsType?.let { wv.evaluateJavascript("addTileRandom('$it')", null) }
         }
     }
 
@@ -122,9 +120,16 @@ fun ChatPreviewApp() {
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { context ->
             android.webkit.WebView(context).apply {
+                setBackgroundColor(android.graphics.Color.parseColor("#2e7d32"))
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 addJavascriptInterface(WebAppInterface(context), "Android")
+                webChromeClient = object : android.webkit.WebChromeClient() {
+                    override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
+                        android.util.Log.d("WebViewConsole", message?.message() ?: "")
+                        return true
+                    }
+                }
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
                         super.onPageFinished(view, url)
