@@ -2,22 +2,100 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Game Preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Pixel Game</title>
   <style>
-    body { margin:0; background:#111; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; }
-    #box { width:120px; height:120px; background:#4caf50; border-radius:12px; position:absolute; cursor:pointer; }
+    html, body { margin:0; padding:0; height:100%; background:#0b3d1a; overflow:hidden; font-family:sans-serif; }
+    #wrap { display:flex; flex-direction:column; height:100%; align-items:center; justify-content:center; }
+    canvas { background:#2e7d32; border:4px solid #1b5e20; image-rendering:pixelated; max-width:100%; }
+    .controls { margin-top:12px; display:grid; grid-template-columns:64px 64px 64px; grid-gap:8px; }
+    .btn { width:64px; height:64px; font-size:24px; border:none; border-radius:8px; background:#1565c0; color:#fff; }
+    .btn:active { background:#0d47a1; }
+    .row { display:contents; }
   </style>
 </head>
 <body>
-  <div id="box"></div>
+  <div id="wrap">
+    <canvas id="game" width="360" height="360"></canvas>
+    <div class="controls">
+      <div></div><button class="btn" onclick="moveUp()">▲</button><div></div>
+      <button class="btn" onclick="moveLeft()">◀</button><button class="btn" onclick="moveDown()">▼</button><button class="btn" onclick="moveRight()">▶</button>
+    </div>
+  </div>
   <script>
-    const box = document.getElementById('box');
-    function rnd() { return Math.random()* (window.innerWidth-120); }
-    box.style.left = rnd()+'px'; box.style.top = rnd()+'px';
-    box.addEventListener('click', () => {
-      box.style.left = rnd()+'px'; box.style.top = rnd()+'px';
-    });
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const size = 32;
+    let player = { x: canvas.width/2 - size/2, y: canvas.height/2 - size/2 };
+    let trees = [];
+
+    function drawGrass() {
+      ctx.fillStyle = '#2e7d32';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#388e3c';
+      for (let i = 0; i < 80; i++) {
+        const gx = (i * 37) % canvas.width;
+        const gy = (i * 73) % canvas.height;
+        ctx.fillRect(gx, gy, 2, 2);
+      }
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = '#1976d2';
+      ctx.fillRect(player.x, player.y, size, size);
+      ctx.fillStyle = '#0d47a1';
+      ctx.fillRect(player.x + 4, player.y + 4, size - 8, size - 8);
+    }
+
+    function drawTree(t) {
+      // trunk
+      ctx.fillStyle = '#5d4037';
+      ctx.fillRect(t.x + 10, t.y + 20, 12, 20);
+      // leaves
+      ctx.fillStyle = '#1b5e20';
+      ctx.beginPath();
+      ctx.arc(t.x + 16, t.y + 16, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2e7d32';
+      ctx.beginPath();
+      ctx.arc(t.x + 16, t.y + 14, 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function render() {
+      drawGrass();
+      trees.forEach(drawTree);
+      drawPlayer();
+    }
+
+    function clamp() {
+      player.x = Math.max(0, Math.min(canvas.width - size, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - size, player.y));
+    }
+
+    function moveBy(dx, dy) { player.x += dx; player.y += dy; clamp(); render(); }
+
+    function moveUp() { moveBy(0, -20); }
+    function moveDown() { moveBy(0, 20); }
+    function moveLeft() { moveBy(-20, 0); }
+    function moveRight() { moveBy(20, 0); }
+
+    function drawRandomTree() {
+      const t = {
+        x: Math.random() * (canvas.width - 32),
+        y: Math.random() * (canvas.height - 40)
+      };
+      trees.push(t);
+      render();
+    }
+
+    window.drawRandomTree = drawRandomTree;
+    window.moveUp = moveUp;
+    window.moveDown = moveDown;
+    window.moveLeft = moveLeft;
+    window.moveRight = moveRight;
+
+    render();
   </script>
 </body>
 </html>

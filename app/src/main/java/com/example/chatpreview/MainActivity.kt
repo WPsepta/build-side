@@ -1,7 +1,10 @@
 package com.example.chatpreview
 
+import android.content.Context
 import android.os.Bundle
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -40,15 +43,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 data class ChatMessage(val text: String, val fromUser: Boolean)
+
+object GameController {
+    data class Command(val id: Long, val type: String)
+    private val _commands = MutableStateFlow<List<Command>>(emptyList())
+    val commands: StateFlow<List<Command>> = _commands.asStateFlow()
+    private var counter = 0L
+    private var lastProcessedId = 0L
+    fun enqueue(type: String) {
+        _commands.value = _commands.value + Command(++counter, type)
+    }
+    fun processNew(block: (Command) -> Unit) {
+        val list = _commands.value
+        for (cmd in list) {
+            if (cmd.id > lastProcessedId) {
+                block(cmd)
+                lastProcessedId = cmd.id
+            }
+        }
+    }
+}
+
+class WebAppInterface(private val context: Context) {
+    @JavascriptInterface
+    fun postMessage(message: String) {
+        // Hook for JS -> Kotlin communication
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,7 +111,6 @@ fun ChatTab() {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(messages.size, sending) {
-        val lastIndex = (if (sending) messages.size else messages.size - 1).coerceAtLeast(0)
         if (messages.isNotEmpty() || sending) {
             listState.animateScrollToItem((messages.size + (if (sending) 1 else 0)).coerceAtLeast(0))
         }
@@ -95,9 +122,7 @@ fun ChatTab() {
             modifier = Modifier.weight(1f).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages) { msg ->
-                MessageBubble(msg)
-            }
+            items(messages) { msg -> MessageBubble(msg) }
             if (sending) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
@@ -129,9 +154,15 @@ fun ChatTab() {
                 messages += ChatMessage(text, fromUser = true)
                 input = ""
                 sending = true
+                val normalized = text.lowercase()
+                if (normalized.contains("pohon")) GameController.enqueue("tree")
+                if (normalized.contains("kanan")) GameController.enqueue("right")
+                if (normalized.contains("kiri")) GameController.enqueue("left")
+                if (normalized.contains("atas")) GameController.enqueue("up")
+                if (normalized.contains("bawah")) GameController.enqueue("down")
                 scope.launch {
-                    val reply = sendToSession(text)
-                    messages += ChatMessage(reply, fromUser = false)
+                    delay(1200)
+                    messages += ChatMessage("Oke, aku lagi buat game pixel art 2D top-down-nya ya!", fromUser = false)
                     sending = false
                 }
             }, enabled = !sending) {
@@ -161,16 +192,45 @@ fun MessageBubble(msg: ChatMessage) {
 
 @Composable
 fun PreviewTab() {
+    val webViewState = remember { mutableStateOf<WebView?>(null) }
+    var pageLoaded by remember { mutableStateOf(false) }
+
+    fun processPending(wv: WebView) {
+        GameController.processNew { cmd ->
+            when (cmd.type) {
+                "tree" -> wv.evaluateJavascript("drawRandomTree()", null)
+                "right" -> wv.evaluateJavascript("moveRight()", null)
+                "left" -> wv.evaluateJavascript("moveLeft()", null)
+                "up" -> wv.evaluateJavascript("moveUp()", null)
+                "down" -> wv.evaluateJavascript("moveDown()", null)
+            }
+        }
+    }
+
+    LaunchedEffect(pageLoaded) {
+        if (pageLoaded) webViewState.value?.let { processPending(it) }
+    }
+
+    LaunchedEffect(Unit) {
+        GameController.commands.collect {
+            if (pageLoaded) webViewState.value?.let { processPending(it) }
+        }
+    }
+
     AndroidView(factory = { context ->
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            addJavascriptInterface(WebAppInterface(context), "Android")
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    pageLoaded = true
+                    view?.let { processPending(it) }
+                }
+            }
             loadUrl("file:///android_asset/www/index.html")
+            webViewState.value = this
         }
     }, modifier = Modifier.fillMaxSize())
-}
-
-private suspend fun sendToSession(text: String): String {
-    kotlinx.coroutines.delay(1200)
-    return "Oke, aku lagi buat game pixel art 2D top-down-nya ya!"
 }
