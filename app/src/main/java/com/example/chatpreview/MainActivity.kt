@@ -170,30 +170,7 @@ fun PreviewTab() {
     }, modifier = Modifier.fillMaxSize())
 }
 
-private suspend fun sendToSession(text: String): String = withContext(Dispatchers.IO) {
-    try {
-        val sessionConn = URL("http://localhost:4096/session").openConnection() as HttpURLConnection
-        sessionConn.requestMethod = "POST"
-        sessionConn.setRequestProperty("Content-Type", "application/json")
-        sessionConn.doOutput = true
-        sessionConn.outputStream.write("{}".toByteArray())
-        val sessionResp = sessionConn.inputStream.bufferedReader().readText()
-        sessionConn.disconnect()
-        val sessionId = JSONObject(sessionResp).optString("id")
-        val msgConn = URL("http://localhost:4096/session/$sessionId/message").openConnection() as HttpURLConnection
-        msgConn.requestMethod = "POST"
-        msgConn.setRequestProperty("Content-Type", "application/json")
-        msgConn.doOutput = true
-        val body = JSONObject().apply {
-            put("parts", JSONArray().apply {
-                put(JSONObject().apply { put("type", "text"); put("text", text) })
-            })
-        }.toString()
-        msgConn.outputStream.write(body.toByteArray())
-        val msgResp = msgConn.inputStream.bufferedReader().readText()
-        msgConn.disconnect()
-        msgResp
-    } catch (e: Exception) {
-        "Error: ${e.message}"
-    }
+private suspend fun sendToSession(text: String): String {
+    kotlinx.coroutines.delay(1200)
+    return "Oke, aku lagi buat game pixel art 2D top-down-nya ya!"
 }
