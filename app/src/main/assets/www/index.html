@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game Preview</title>
+  <style>
+    body { margin:0; background:#111; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; }
+    #box { width:120px; height:120px; background:#4caf50; border-radius:12px; position:absolute; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div id="box"></div>
+  <script>
+    const box = document.getElementById('box');
+    function rnd() { return Math.random()* (window.innerWidth-120); }
+    box.style.left = rnd()+'px'; box.style.top = rnd()+'px';
+    box.addEventListener('click', () => {
+      box.style.left = rnd()+'px'; box.style.top = rnd()+'px';
+    });
+  </script>
+</body>
+</html>
