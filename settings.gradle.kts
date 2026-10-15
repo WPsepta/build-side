@@ -1,7 +1,5 @@
 rootProject.name = "ChatPreview"
 
-import org.gradle.api.initialization.resolve.ResolveSettings
-@Suppress("UnstableApiUsage")
 pluginManagement {
     repositories {
         google()
