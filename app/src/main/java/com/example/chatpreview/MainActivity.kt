@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -23,16 +24,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.Button
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,8 +62,7 @@ object GameController {
         _commands.value = _commands.value + Command(++counter, type)
     }
     fun processNew(block: (Command) -> Unit) {
-        val list = _commands.value
-        for (cmd in list) {
+        for (cmd in _commands.value) {
             if (cmd.id > lastProcessedId) {
                 block(cmd)
                 lastProcessedId = cmd.id
@@ -74,7 +74,6 @@ object GameController {
 class WebAppInterface(private val context: Context) {
     @JavascriptInterface
     fun postMessage(message: String) {
-        // Hook for JS -> Kotlin communication
     }
 }
 
@@ -87,39 +86,131 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ChatPreviewApp() {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Chat", "Preview")
-    Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedTab) {
-            tabs.forEachIndexed { index, title ->
-                Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(title) })
+    val messages = remember { mutableStateListOf<ChatMessage>() }
+    var input by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var showChat by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val webViewState = remember { mutableStateOf<android.webkit.WebView?>(null) }
+    var pageLoaded by remember { mutableStateOf(false) }
+
+    fun processPending(wv: android.webkit.WebView) {
+        GameController.processNew { cmd ->
+            val jsType = when (cmd.type) {
+                "water" -> "water"
+                "grass" -> "grass"
+                "dirt" -> "dirt"
+                "stone" -> "stone"
+                else -> null
             }
+            jsType?.let { wv.evaluateJavascript("addTileRandom('$it')", null) }
         }
-        when (selectedTab) {
-            0 -> ChatTab()
-            1 -> PreviewTab()
+    }
+
+    LaunchedEffect(pageLoaded) {
+        if (pageLoaded) webViewState.value?.let { processPending(it) }
+    }
+    LaunchedEffect(Unit) {
+        GameController.commands.collect {
+            if (pageLoaded) webViewState.value?.let { processPending(it) }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(factory = { context ->
+            android.webkit.WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                addJavascriptInterface(WebAppInterface(context), "Android")
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        pageLoaded = true
+                        view?.let { processPending(it) }
+                    }
+                }
+                loadUrl("file:///android_asset/www/index.html")
+                webViewState.value = this
+            }
+        }, modifier = Modifier.fillMaxSize())
+
+        FloatingActionButton(
+            onClick = { showChat = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        ) {
+            Text("💬")
+        }
+
+        if (showChat) {
+            ModalBottomSheet(
+                onDismissRequest = { showChat = false },
+                sheetState = sheetState
+            ) {
+                ChatSheetContent(
+                    messages = messages,
+                    input = input,
+                    onInputChange = { input = it },
+                    sending = sending,
+                    onSend = {
+                        val text = input.trim()
+                        if (text.isBlank() || sending) return@ChatSheetContent
+                        messages += ChatMessage(text, true)
+                        input = ""
+                        sending = true
+                        val normalized = text.lowercase()
+                        val reply = when {
+                            normalized.contains("air") -> {
+                                GameController.enqueue("water")
+                                "Oke, aku tambahkan air di map."
+                            }
+                            normalized.contains("rumput") -> {
+                                GameController.enqueue("grass")
+                                "Oke, aku tambahkan rumput di map."
+                            }
+                            normalized.contains("tanah") -> {
+                                GameController.enqueue("dirt")
+                                "Oke, aku tambahkan tanah di map."
+                            }
+                            normalized.contains("batu") -> {
+                                GameController.enqueue("stone")
+                                "Oke, aku tambahkan batu di map."
+                            }
+                            else -> "Siap, aku update map-nya ya!"
+                        }
+                        scope.launch {
+                            delay(800)
+                            messages += ChatMessage(reply, false)
+                            sending = false
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
 @Composable
-fun ChatTab() {
-    var input by remember { mutableStateOf("") }
-    var sending by remember { mutableStateOf(false) }
-    val messages = remember { mutableStateListOf<ChatMessage>() }
+fun ChatSheetContent(
+    messages: List<ChatMessage>,
+    input: String,
+    onInputChange: (String) -> Unit,
+    sending: Boolean,
+    onSend: () -> Unit
+) {
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-
     LaunchedEffect(messages.size, sending) {
         if (messages.isNotEmpty() || sending) {
             listState.animateScrollToItem((messages.size + (if (sending) 1 else 0)).coerceAtLeast(0))
         }
     }
-
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxWidth().height(420.dp)) {
+        Text("Chat", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.titleMedium)
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).padding(8.dp),
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(messages) { msg -> MessageBubble(msg) }
@@ -142,30 +233,13 @@ fun ChatTab() {
         ) {
             OutlinedTextField(
                 value = input,
-                onValueChange = { input = it },
+                onValueChange = onInputChange,
                 modifier = Modifier.weight(1f),
                 label = { Text("Pesan") },
                 maxLines = 4
             )
             Spacer(Modifier.width(8.dp))
-            Button(onClick = {
-                val text = input.trim()
-                if (text.isBlank() || sending) return@Button
-                messages += ChatMessage(text, fromUser = true)
-                input = ""
-                sending = true
-                val normalized = text.lowercase()
-                if (normalized.contains("pohon")) GameController.enqueue("tree")
-                if (normalized.contains("kanan")) GameController.enqueue("right")
-                if (normalized.contains("kiri")) GameController.enqueue("left")
-                if (normalized.contains("atas")) GameController.enqueue("up")
-                if (normalized.contains("bawah")) GameController.enqueue("down")
-                scope.launch {
-                    delay(1200)
-                    messages += ChatMessage("Oke, aku lagi buat game pixel art 2D top-down-nya ya!", fromUser = false)
-                    sending = false
-                }
-            }, enabled = !sending) {
+            TextButton(onClick = onSend, enabled = !sending) {
                 Text(if (sending) "..." else "Kirim")
             }
         }
@@ -188,49 +262,4 @@ fun MessageBubble(msg: ChatMessage) {
             )
         }
     }
-}
-
-@Composable
-fun PreviewTab() {
-    val webViewState = remember { mutableStateOf<WebView?>(null) }
-    var pageLoaded by remember { mutableStateOf(false) }
-
-    fun processPending(wv: WebView) {
-        GameController.processNew { cmd ->
-            when (cmd.type) {
-                "tree" -> wv.evaluateJavascript("drawRandomTree()", null)
-                "right" -> wv.evaluateJavascript("moveRight()", null)
-                "left" -> wv.evaluateJavascript("moveLeft()", null)
-                "up" -> wv.evaluateJavascript("moveUp()", null)
-                "down" -> wv.evaluateJavascript("moveDown()", null)
-            }
-        }
-    }
-
-    LaunchedEffect(pageLoaded) {
-        if (pageLoaded) webViewState.value?.let { processPending(it) }
-    }
-
-    LaunchedEffect(Unit) {
-        GameController.commands.collect {
-            if (pageLoaded) webViewState.value?.let { processPending(it) }
-        }
-    }
-
-    AndroidView(factory = { context ->
-        WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            addJavascriptInterface(WebAppInterface(context), "Android")
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    pageLoaded = true
-                    view?.let { processPending(it) }
-                }
-            }
-            loadUrl("file:///android_asset/www/index.html")
-            webViewState.value = this
-        }
-    }, modifier = Modifier.fillMaxSize())
 }
